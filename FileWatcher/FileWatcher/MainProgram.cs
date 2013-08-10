@@ -110,7 +110,7 @@ namespace FileWatcher
             {
                 foreach (DirectoryInfo dInfo in topFolder.Value)
                 {
-                    Console.WriteLine(string.Format("{0}\\{1} => {2}", topFolder.Key, dInfo.Name, dInfo.FullName));
+                    Console.WriteLine(string.Format("{0}\\{1} => {2}", shareFolder + "\\" + topFolder.Key, dInfo.Name, dInfo.FullName));
                 }
             }
         }
