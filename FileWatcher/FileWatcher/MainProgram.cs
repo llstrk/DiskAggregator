@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.IO;
 using System.Timers;
+using System.Runtime.InteropServices;
 
 namespace FileWatcher
 {
@@ -110,7 +111,21 @@ namespace FileWatcher
             {
                 foreach (DirectoryInfo dInfo in topFolder.Value)
                 {
-                    Console.WriteLine(string.Format("{0}\\{1} => {2}", shareFolder + "\\" + topFolder.Key, dInfo.Name, dInfo.FullName));
+                    string topFolderPath = shareFolder + "\\" + topFolder.Key;
+                    string linkPath = shareFolder + "\\" + topFolder.Key + "\\" + dInfo.Name;
+                    string destination = dInfo.FullName;
+                    //Console.WriteLine(string.Format("{0} => {1}", linkPath, destination));
+
+                    if (!Directory.Exists(topFolderPath))
+                    {
+                        Directory.CreateDirectory(topFolderPath);
+                    }
+
+                    CreateSymbolicLinkDirectory(linkPath, destination);
+                    if (!Directory.Exists(linkPath))
+                    {
+                        Console.WriteLine("{0} was not created. This is most likely because this program was not run with administrative rights", linkPath);
+                    }
                 }
             }
         }
@@ -128,6 +143,18 @@ namespace FileWatcher
         private void OnRenamed(object sender, RenamedEventArgs e)
         {
             FileSystemUpdate();
+        }
+
+
+        [DllImport("kernel32.dll")]
+        private static extern bool CreateSymbolicLink(string lpSymlinkFileName, string lpTargetFileName, int dwFlags);
+        private void CreateSymbolicLinkDirectory(string linkPath, string destination)
+        {
+            if (!CreateSymbolicLink(linkPath, destination, 1) || Marshal.GetLastWin32Error() != 0)
+            {
+                //Console.WriteLine(Marshal.GetExceptionForHR(Marshal.GetHRForLastWin32Error()).Message);                
+                //Marshal.ThrowExceptionForHR(Marshal.GetHRForLastWin32Error());
+            }
         }
     }
 }
