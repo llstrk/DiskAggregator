@@ -51,17 +51,23 @@ namespace FileWatcher
 
         public void Start()
         {
-            foreach (string tf in topFolders) {
-                FileSystemWatcher newFsw = new FileSystemWatcher();
-                newFsw.Path = tf;
-                newFsw.IncludeSubdirectories = true;
-                newFsw.Created += new FileSystemEventHandler(OnCreated);
-                newFsw.Deleted += new FileSystemEventHandler(OnDeleted);
-                newFsw.Renamed += new RenamedEventHandler(OnRenamed);
-                newFsw.NotifyFilter = NotifyFilters.DirectoryName;
-                newFsw.EnableRaisingEvents = true;
-                Console.WriteLine("Added " + tf);
-                listFsw.Add(newFsw);
+            CheckForNewFilesAndFolders(shareFolder);
+
+            if (false)
+            {
+                foreach (string tf in topFolders)
+                {
+                    FileSystemWatcher newFsw = new FileSystemWatcher();
+                    newFsw.Path = tf;
+                    newFsw.IncludeSubdirectories = true;
+                    newFsw.Created += new FileSystemEventHandler(OnCreated);
+                    newFsw.Deleted += new FileSystemEventHandler(OnDeleted);
+                    newFsw.Renamed += new RenamedEventHandler(OnRenamed);
+                    newFsw.NotifyFilter = NotifyFilters.DirectoryName;
+                    newFsw.EnableRaisingEvents = true;
+                    Console.WriteLine("Added " + tf);
+                    listFsw.Add(newFsw);
+                }
             }
             Console.WriteLine("Startup complete");
             Console.WriteLine("------------------------------------");
@@ -99,7 +105,11 @@ namespace FileWatcher
                     foreach (string r in result)
                     {
                         DirectoryInfo folder = new DirectoryInfo(r);
-                        AddFolder(topFolder.Name, folder);
+                        if ((folder.Attributes & FileAttributes.Hidden) == 0) // Not hidden
+                        {
+                            AddFolder(topFolder.Name, folder);
+                        }
+                        
                     }
                 }
             }
@@ -125,6 +135,24 @@ namespace FileWatcher
                     if (!Directory.Exists(linkPath))
                     {
                         Console.WriteLine("{0} was not created. This is most likely because this program was not run with administrative rights", linkPath);
+                    }
+                }
+            }
+        }
+
+        private void CheckForNewFilesAndFolders(string path)
+        {
+            string[] topFolders = Directory.GetDirectories(path);
+            foreach (string topFolder in topFolders)
+            {
+                string[] folders = Directory.GetDirectories(topFolder);
+
+                foreach (string folder in folders)
+                {
+                    DirectoryInfo dInfo = new DirectoryInfo(folder);
+                    if ((dInfo.Attributes & FileAttributes.ReparsePoint) == 0) // Not reparse point
+                    {
+                        Console.WriteLine("{0} > Not a symbolic link", dInfo.FullName);
                     }
                 }
             }
