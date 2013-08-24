@@ -73,17 +73,31 @@ namespace FileWatcher
                     }
                     else
                     {
-                        DirectoryCopy(item, newPath, true);
-                        long sourceSize = GetDirectorySize(item);
-                        long destSize = GetDirectorySize(newPath);
-
-                        if (sourceSize != destSize)
+                        string tempPath = newPath + "_temp";
+                        if (Directory.Exists(tempPath))
                         {
-                            Console.WriteLine("Incorrect size after move. Source size: {0}, destination size: {1}", sourceSize, destSize);
+                            Console.WriteLine("Temp path {0} exists, panicking...", tempPath);
                         }
                         else
                         {
-                            Console.WriteLine("Successful copy");
+                            DirectoryInfo tempDir = Directory.CreateDirectory(tempPath);
+                            tempDir.Attributes = FileAttributes.Hidden; //  FileWatcher will not trigger on files ending in _temp
+                            DirectoryCopy(item, tempPath, true);
+                            long sourceSize = GetDirectorySize(item);
+                            long destSize = GetDirectorySize(tempPath);
+
+                            if (sourceSize != destSize)
+                            {
+                                Console.WriteLine("Incorrect size after move. Source size: {0}, destination size: {1}", sourceSize, destSize);
+                                //Directory.Delete(tempPath, true);
+                            }
+                            else
+                            {
+                                tempDir.Attributes -= FileAttributes.Hidden;
+                                Directory.Delete(item, true);
+                                Directory.Move(tempPath, newPath);
+                                Console.WriteLine("Successful copy");
+                            }
                         }
                     }
                 }
@@ -117,7 +131,6 @@ namespace FileWatcher
             timer.Start();
         }
 
-        // TODO: Ability to create hidden folders
         private void DirectoryCopy(string sourceDirName, string destDirName, bool copySubDirs)
         {
             // Get the subdirectories for the specified directory.
@@ -302,7 +315,10 @@ namespace FileWatcher
 
         private void OnCreated(object sender, FileSystemEventArgs e)
         {
-            FileSystemUpdate();
+            if (!e.Name.EndsWith("_temp"))
+            {
+                FileSystemUpdate();
+            }
         }
 
         private void OnDeleted(object sender, FileSystemEventArgs e)
