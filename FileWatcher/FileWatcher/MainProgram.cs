@@ -22,6 +22,80 @@ namespace FileWatcher
         private string shareFolder;
         private Queue<string> moveQueue;
         private int moveTimerInterval = 60000;
+        private string logFile = "log.txt";
+        private int consoleLogLevel = 3;
+        private int fileLogLevel = 4;
+
+        /*
+         * 0: Critical
+         * 1: Error
+         * 2: Warning
+         * 3: Information
+         * 4: Debug
+         */ 
+        public void Log(int logLevel, string message)
+        {
+            using (StreamWriter tw = File.AppendText(logFile))
+            {
+                string tmp = string.Format(" {0}> ", DateTime.Now.ToString("dd-MM-yyyy HH:mm:ss"));
+                switch (logLevel)
+                {
+                    case 0:
+                        if (logLevel <= consoleLogLevel)
+                        {
+                            Console.WriteLine("[CRITICAL]" + tmp + message);
+                        }
+                        if (logLevel <= fileLogLevel)
+                        {
+                            tw.WriteLine("[CRITICAL]" + tmp + message);
+                        }
+                        break;
+                    case 1:
+                        if (logLevel <= consoleLogLevel)
+                        {
+                            Console.WriteLine("[ERROR]   " + tmp + message);
+                        }
+                        if (logLevel <= fileLogLevel)
+                        {
+                            tw.WriteLine("[ERROR]   " + tmp + message);
+                        }
+                        break;
+                    case 2:
+                        if (logLevel <= consoleLogLevel)
+                        {
+                            Console.WriteLine("[WARN]    " + tmp + message);
+                        }
+                        if (logLevel <= fileLogLevel)
+                        {
+                            tw.WriteLine("[WARN]    " + tmp + message);
+                        }
+                        break;
+                    case 3:
+                        if (logLevel <= consoleLogLevel)
+                        {
+                            Console.WriteLine("[INFO]    " + tmp + message);
+                        }
+                        if (logLevel <= fileLogLevel)
+                        {
+                            tw.WriteLine("[INFO]    " + tmp + message);
+                        }
+                        break;
+                    case 4:
+                        if (logLevel <= consoleLogLevel)
+                        {
+                            Console.WriteLine("[DEBUG]   " + tmp + message);
+                        }
+                        if (logLevel <= fileLogLevel)
+                        {
+                            tw.WriteLine("[DEBUG]   " + tmp + message);
+                        }
+                        break;
+                    default:
+                        throw new Exception("Unknown log level:" + logLevel);
+                        break;
+                }
+            }
+        }
 
         public MainProgram()
         {
@@ -53,13 +127,17 @@ namespace FileWatcher
             string item = null;
             try
             {
+                Log(4, "Dequeing item");
                 item = moveQueue.Dequeue();
+                Log(4, string.Format("Got item {0}", item));
             } catch { }
 
             while (item != null)
             {
                 long itemSize = GetDirectorySize(item);
+                Log(4, string.Format("Item is {0} bytes", itemSize));
                 DirectoryInfo dirInfo = FindPathWithMostFreeSpace(topFolders);
+                Log(4, string.Format("Best drive is {0}", dirInfo.Root.Name));
 
                 long sizeAfterItemMb = (new DriveInfo(dirInfo.Root.Name).AvailableFreeSpace - itemSize) / 1024 / 1024;
 
@@ -70,27 +148,31 @@ namespace FileWatcher
                     string tempPath = newPath + "_temp";
                     DirectoryInfo tempDir = null;
 
-                    Console.WriteLine("Processing {0} (moving to {1})", item, newPath);
+                    Log(3, string.Format("Processing {0} (moving to {1})", item, newPath));
 
                     if (Directory.Exists(newPath))
                     {
-                        Console.WriteLine("Path {0} already exists", newPath);
+                        Log(2, string.Format("Path {0} already exists", newPath));
                         dirAlreadyExists = true;
+                        tempPath = newPath;
+                        tempDir = new DirectoryInfo(newPath);
                     }
 
                     if (!dirAlreadyExists)
                     {
                         if (Directory.Exists(tempPath))
                         {
-                            Console.WriteLine("Temp path {0} exists", tempPath);
+                            Log(2, string.Format("Temp path {0} exists", tempPath));
                             tempDir = new DirectoryInfo(tempPath);
                         }
                         else
                         {
                             tempDir = Directory.CreateDirectory(tempPath); //  FileWatcher will not trigger on files ending in _temp
                             tempDir.Attributes = FileAttributes.Hidden;
+                            Log(4, string.Format("Created {0} and changed it to hidden", tempDir.FullName));
                         }
 
+                        Log(4, string.Format("Copying {0} to {1}", item, tempPath));
                         DirectoryCopy(item, tempPath, true);
                     }
                     long sourceSize = GetDirectorySize(item);
@@ -98,74 +180,90 @@ namespace FileWatcher
 
                     if (sourceSize != destSize)
                     {
-                        Console.WriteLine("Folder is incorrect size after move, this is probably because initial copy is still in progress");
-                        Console.WriteLine("Source size      : {0}", sourceSize);
-                        Console.WriteLine("Destination size : {0}", destSize);
+                        Log(2, string.Format("Folder is incorrect size after move, this is probably because initial copy is still in progress"));
+                        Log(2, string.Format("Source size      : {0}", sourceSize));
+                        Log(2, string.Format("Destination size : {0}", destSize));
                     }
                     else
                     {
-                        tempDir.Attributes -= FileAttributes.Hidden;
+                        if ((tempDir.Attributes & FileAttributes.Hidden) == FileAttributes.Hidden) // Remove hidden if present
+                        {
+                            tempDir.Attributes -= FileAttributes.Hidden;
+                        }
                         bool copyOk = true;
 
                         try
                         {
                             if (!dirAlreadyExists)
                             {
+                                Log(4, string.Format("Moving temp to final folder: Moving {0} to {1}", tempPath, newPath));
                                 Directory.Move(tempPath, newPath);
                             }
                         }
-                        catch (IOException ex)
+                        catch (Exception ex)
                         {
                             tempDir.Attributes = FileAttributes.Hidden;
                             copyOk = false;
-                            Console.WriteLine(ex.Message);
+                            Log(1, ex.Message);
                         }
                         try
                         {
                             if (copyOk)
                             {
+                                Log(4, string.Format("Preparing source for deletion: Moving {0} to {1}", item, item + "_delete"));
                                 Directory.Move(item, item + "_delete");
                             }
                         }
-                        catch (IOException ex)
+                        catch (Exception ex)
                         {
                             copyOk = false;
-                            Console.WriteLine(ex.Message);
+                            Log(1, ex.Message);
                         }
                         try
                         {
                             if (copyOk)
                             {
+                                Log(4, string.Format("Deleting source: Deleting {0}", item + "_delete"));
                                 Directory.Delete(item + "_delete", true);
+
+                                if (dirAlreadyExists)
+                                {
+                                    Log(4, "Triggering FileSystemUpdate()");
+                                    FileSystemUpdate();
+                                }
                             }
                         }
-                        catch (IOException ex)
+                        catch (Exception ex)
                         {
                             copyOk = false;
-                            Console.WriteLine(ex.Message);
+                            Log(1, ex.Message);
                         }
 
                         if (copyOk)
                         {
-                            Console.WriteLine("Successful copy");
+                            Log(3, string.Format("Successful copy"));
                         }
                     }
                 }
                 else
                 {
-                    Console.WriteLine("Free space on {0} after item {1} is less than {2}, skipping", dirInfo.FullName, item, minimumFreeSpace);
+                    Log(2, string.Format("Free space on {0} after item {1} is less than {2}, skipping", dirInfo.FullName, item, minimumFreeSpace));
                 }
 
                 try
                 {
+                    Log(4, "Dequeing item");
                     item = moveQueue.Dequeue();
+                    Log(4, string.Format("Got item {0}", item));
                 }
                 catch
                 {
+                    Log(4, "No more items in queue");
                     item = null;
                 }
             }
 
+            Log(4, string.Format("Starting moveTimer with interval {0}", moveTimerInterval));
             moveTimer.Interval = moveTimerInterval;
             moveTimer.Start();
         }
@@ -175,10 +273,10 @@ namespace FileWatcher
             if (update)
             {
                 update = false;
-                Console.WriteLine("{0}> Updating...", DateTime.Now.ToString("HH:mm:ss"));
+                Log(3, "Updating...");
                 CheckFolders();
                 UpdateShareFolder();
-                Console.WriteLine("{0}> Done", DateTime.Now.ToString("HH:mm:ss"));
+                Log(3, "Done");
             }
 
             timer.Start();
@@ -222,7 +320,7 @@ namespace FileWatcher
                         {
                             if (ex.HResult == -2147024864)
                             {
-                                Console.WriteLine("File {0} is in use, skipping", file.Name);
+                                Log(2, string.Format("File {0} is in use, skipping", file.Name));
                             }
                         }
                     }
@@ -237,7 +335,7 @@ namespace FileWatcher
                     {
                         if (ex.HResult == -2147024864)
                         {
-                            Console.WriteLine("File {0} is in use, skipping", file.Name);
+                            Log(2, string.Format("File {0} is in use, skipping", file.Name));
                         }
                     }
                 }
@@ -266,11 +364,11 @@ namespace FileWatcher
                 newFsw.Renamed += new RenamedEventHandler(OnRenamed);
                 newFsw.NotifyFilter = NotifyFilters.DirectoryName;
                 newFsw.EnableRaisingEvents = true;
-                Console.WriteLine("Added " + tf);
+                Log(3, ("Added " + tf));
                 listFsw.Add(newFsw);
             }
-            Console.WriteLine("Startup complete");
-            Console.WriteLine("------------------------------------");
+            Log(3, ("Startup complete"));
+            Log(3, ("------------------------------------"));
 
         }
 
@@ -345,7 +443,7 @@ namespace FileWatcher
                     CreateSymbolicLinkDirectory(linkPath, destination);
                     if (!Directory.Exists(linkPath))
                     {
-                        Console.WriteLine("{0} was not created. This is most likely because this program was not run with administrative rights", linkPath);
+                        Log(1, string.Format("{0} was not created. This is most likely because this program was not run with administrative rights", linkPath));
                     }
                 }
             }
@@ -404,10 +502,18 @@ namespace FileWatcher
             {
                 case "fm":
                     moveTimerInterval = 10000;
-                    Console.WriteLine("moveTimer changed to 10 sec");
+                    Log(3, "moveTimer changed to 10 sec");
+                    break;
+                case "debug":
+                    consoleLogLevel = 4;
+                    Log(3, "Debug messages enabled");
+                    break;
+                case "nodebug":
+                    consoleLogLevel = 3;
+                    Log(3, "Debug messages disabled");
                     break;
                 default:
-                    Console.WriteLine("Unknown command");
+                    Log(1, "Unknown command");
                     break;
             }
         }
