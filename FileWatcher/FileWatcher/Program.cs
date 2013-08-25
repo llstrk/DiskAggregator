@@ -13,7 +13,10 @@ namespace FileWatcher
             MainProgram prog = new MainProgram();
             prog.Start();
 
-            Console.ReadLine();
+            while (true)
+            {
+                prog.Input(Console.ReadLine());
+            }
         }
     }
 }

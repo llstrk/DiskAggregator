@@ -21,6 +21,7 @@ namespace FileWatcher
         private string[] topFolders;
         private string shareFolder;
         private Queue<string> moveQueue;
+        private int moveTimerInterval = 60000;
 
         public MainProgram()
         {
@@ -46,7 +47,7 @@ namespace FileWatcher
         void moveTimer_Elapsed(object sender, ElapsedEventArgs e)
         {
             int minimumFreeSpace = 1024;
-
+            
             AddToMoveQueue(GetNewFolders(shareFolder));
 
             string item = null;
@@ -65,39 +66,88 @@ namespace FileWatcher
                 if (sizeAfterItemMb > minimumFreeSpace)
                 {
                     string newPath = item.Replace(shareFolder, dirInfo.FullName);
-                    Console.WriteLine("We should totally copy {0} to {1}", item, newPath);
+                    bool dirAlreadyExists = false;
+                    string tempPath = newPath + "_temp";
+                    DirectoryInfo tempDir = null;
+
+                    Console.WriteLine("Processing {0} (moving to {1})", item, newPath);
 
                     if (Directory.Exists(newPath))
                     {
-                        Console.WriteLine("Path already exists, panicking...");
+                        Console.WriteLine("Path {0} already exists", newPath);
+                        dirAlreadyExists = true;
                     }
-                    else
+
+                    if (!dirAlreadyExists)
                     {
-                        string tempPath = newPath + "_temp";
                         if (Directory.Exists(tempPath))
                         {
-                            Console.WriteLine("Temp path {0} exists, panicking...", tempPath);
+                            Console.WriteLine("Temp path {0} exists", tempPath);
+                            tempDir = new DirectoryInfo(tempPath);
                         }
                         else
                         {
-                            DirectoryInfo tempDir = Directory.CreateDirectory(tempPath);
-                            tempDir.Attributes = FileAttributes.Hidden; //  FileWatcher will not trigger on files ending in _temp
-                            DirectoryCopy(item, tempPath, true);
-                            long sourceSize = GetDirectorySize(item);
-                            long destSize = GetDirectorySize(tempPath);
+                            tempDir = Directory.CreateDirectory(tempPath); //  FileWatcher will not trigger on files ending in _temp
+                            tempDir.Attributes = FileAttributes.Hidden;
+                        }
 
-                            if (sourceSize != destSize)
+                        DirectoryCopy(item, tempPath, true);
+                    }
+                    long sourceSize = GetDirectorySize(item);
+                    long destSize = GetDirectorySize(tempPath);
+
+                    if (sourceSize != destSize)
+                    {
+                        Console.WriteLine("Folder is incorrect size after move, this is probably because initial copy is still in progress");
+                        Console.WriteLine("Source size      : {0}", sourceSize);
+                        Console.WriteLine("Destination size : {0}", destSize);
+                    }
+                    else
+                    {
+                        tempDir.Attributes -= FileAttributes.Hidden;
+                        bool copyOk = true;
+
+                        try
+                        {
+                            if (!dirAlreadyExists)
                             {
-                                Console.WriteLine("Incorrect size after move. Source size: {0}, destination size: {1}", sourceSize, destSize);
-                                //Directory.Delete(tempPath, true);
-                            }
-                            else
-                            {
-                                tempDir.Attributes -= FileAttributes.Hidden;
-                                Directory.Delete(item, true);
                                 Directory.Move(tempPath, newPath);
-                                Console.WriteLine("Successful copy");
                             }
+                        }
+                        catch (IOException ex)
+                        {
+                            tempDir.Attributes = FileAttributes.Hidden;
+                            copyOk = false;
+                            Console.WriteLine(ex.Message);
+                        }
+                        try
+                        {
+                            if (copyOk)
+                            {
+                                Directory.Move(item, item + "_delete");
+                            }
+                        }
+                        catch (IOException ex)
+                        {
+                            copyOk = false;
+                            Console.WriteLine(ex.Message);
+                        }
+                        try
+                        {
+                            if (copyOk)
+                            {
+                                Directory.Delete(item + "_delete", true);
+                            }
+                        }
+                        catch (IOException ex)
+                        {
+                            copyOk = false;
+                            Console.WriteLine(ex.Message);
+                        }
+
+                        if (copyOk)
+                        {
+                            Console.WriteLine("Successful copy");
                         }
                     }
                 }
@@ -115,6 +165,9 @@ namespace FileWatcher
                     item = null;
                 }
             }
+
+            moveTimer.Interval = moveTimerInterval;
+            moveTimer.Start();
         }
 
         private void timer_Elapsed(object sender, ElapsedEventArgs e)
@@ -155,7 +208,39 @@ namespace FileWatcher
             foreach (FileInfo file in files)
             {
                 string temppath = Path.Combine(destDirName, file.Name);
-                file.CopyTo(temppath, false);
+
+                // Checks if file exists, and only overwrites if length is different
+                if (File.Exists(temppath))
+                {
+                    FileInfo newFileInfo = new FileInfo(temppath);
+                    if (file.Length != newFileInfo.Length)
+                    {
+                        try {
+                            file.CopyTo(temppath, true);
+                        }
+                        catch (System.IO.IOException ex)
+                        {
+                            if (ex.HResult == -2147024864)
+                            {
+                                Console.WriteLine("File {0} is in use, skipping", file.Name);
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    try
+                    {
+                        file.CopyTo(temppath, false);
+                    }
+                    catch (System.IO.IOException ex)
+                    {
+                        if (ex.HResult == -2147024864)
+                        {
+                            Console.WriteLine("File {0} is in use, skipping", file.Name);
+                        }
+                    }
+                }
             }
 
             // If copying subdirectories, copy them and their contents to new location. 
@@ -313,9 +398,23 @@ namespace FileWatcher
             return sortedFreeSpace.First();
         }
 
+        public void Input(string input)
+        {
+            switch (input)
+            {
+                case "fm":
+                    moveTimerInterval = 10000;
+                    Console.WriteLine("moveTimer changed to 10 sec");
+                    break;
+                default:
+                    Console.WriteLine("Unknown command");
+                    break;
+            }
+        }
+
         private void OnCreated(object sender, FileSystemEventArgs e)
         {
-            if (!e.Name.EndsWith("_temp"))
+            if (!e.Name.Contains("_temp"))
             {
                 FileSystemUpdate();
             }
@@ -323,12 +422,18 @@ namespace FileWatcher
 
         private void OnDeleted(object sender, FileSystemEventArgs e)
         {
-            FileSystemUpdate();
+            if (!e.Name.Contains("_temp"))
+            {
+                FileSystemUpdate();
+            }
         }
 
         private void OnRenamed(object sender, RenamedEventArgs e)
         {
-            FileSystemUpdate();
+            if (!e.Name.Contains("_temp"))
+            {
+                FileSystemUpdate();
+            }
         }
 
 
