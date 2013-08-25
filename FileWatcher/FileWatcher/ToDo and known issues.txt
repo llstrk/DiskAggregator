@@ -1,0 +1,5 @@
+﻿-- To Do --
+Check if a _temp folder already exists, and if so, use it
+
+-- Issues --
+Observed that a symbolic link wasn't created after source was deleted. When checking if the dir exists after copy, make sure it's a symbolic link, and not just the old source
