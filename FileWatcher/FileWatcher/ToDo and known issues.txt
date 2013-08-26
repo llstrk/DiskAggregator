@@ -1,5 +1,9 @@
-﻿-- To Do --
-Check if a _temp folder already exists, and if so, use it
+﻿-- To do --
+Do junction points instead of symbolic links
 
 -- Issues --
-Observed that a symbolic link wasn't created after source was deleted. When checking if the dir exists after copy, make sure it's a symbolic link, and not just the old source
+
+-- Possible features --
+Do more granular file system updates, instead of quering all folders everytime
+Keep a cache of all folders, to prevent unnecessary spinning up harddrives when finding a new location, or looking for temp dirs
+Limit how fast the program will write data to the disks (for example, be able to choose 10MB/sec maximum)

@@ -21,10 +21,12 @@ namespace FileWatcher
         private string[] topFolders;
         private string shareFolder;
         private Queue<string> moveQueue;
+        private int timerInterval = 10000;
         private int moveTimerInterval = 60000;
         private string logFile = "log.txt";
         private int consoleLogLevel = 3;
         private int fileLogLevel = 4;
+        private List<string> foundTempDirs;
 
         /*
          * 0: Critical
@@ -118,7 +120,7 @@ namespace FileWatcher
             shareFolder = File.ReadAllLines("ShareFolder.txt")[0];
         }
 
-        void moveTimer_Elapsed(object sender, ElapsedEventArgs e)
+        private void moveTimer_Elapsed(object sender, ElapsedEventArgs e)
         {
             int minimumFreeSpace = 1024;
             
@@ -160,6 +162,12 @@ namespace FileWatcher
 
                     if (!dirAlreadyExists)
                     {
+                        // Check if we already have a temp path laying around
+                        if (GetExistingTempDir(tempPath) != null)
+                        {
+                            tempPath = GetExistingTempDir(tempPath);
+                        }
+
                         if (Directory.Exists(tempPath))
                         {
                             Log(2, string.Format("Temp path {0} exists", tempPath));
@@ -225,12 +233,6 @@ namespace FileWatcher
                             {
                                 Log(4, string.Format("Deleting source: Deleting {0}", item + "_delete"));
                                 Directory.Delete(item + "_delete", true);
-
-                                if (dirAlreadyExists)
-                                {
-                                    Log(4, "Triggering FileSystemUpdate()");
-                                    FileSystemUpdate();
-                                }
                             }
                         }
                         catch (Exception ex)
@@ -242,6 +244,8 @@ namespace FileWatcher
                         if (copyOk)
                         {
                             Log(3, string.Format("Successful copy"));
+                            Log(4, "Triggering FileSystemUpdate()");
+                            FileSystemUpdate();
                         }
                     }
                 }
@@ -279,7 +283,39 @@ namespace FileWatcher
                 Log(3, "Done");
             }
 
+            timer.Interval = timerInterval;
             timer.Start();
+        }
+
+        private string GetExistingTempDir(string tempPath)
+        {
+            CheckForTempDirs(topFolders);
+            foreach (string tempDir in foundTempDirs)
+            {
+                if (tempDir.Contains(tempPath))
+                {
+                    return tempDir;
+                }
+            }
+
+            return null;
+        }
+
+        private void CheckForTempDirs(string[] topFolders)
+        {
+            ClearFoundTempDirs();
+
+            topFolders.ToList().ForEach(r => {
+                if (r.Contains("_temp"))
+                {
+                    foundTempDirs.Add(r);
+                }
+            });
+        }
+
+        private void ClearFoundTempDirs()
+        {
+            foundTempDirs = new List<string>();
         }
 
         private void DirectoryCopy(string sourceDirName, string destDirName, bool copySubDirs)
@@ -374,7 +410,14 @@ namespace FileWatcher
 
         private void FileSystemUpdate()
         {
-            update = true;
+            Log(4, "FileSystemUpdate()");
+            if (!update)
+            {
+                update = true;
+                timer.Interval = timerInterval;
+                timer.Start();
+                Log(4, "FileSystemUpdate(): Started timer");
+            }
         }
 
         private void AddFolder(string name, DirectoryInfo directoryInfo)
@@ -433,7 +476,6 @@ namespace FileWatcher
                     string topFolderPath = shareFolder + "\\" + topFolder.Key;
                     string linkPath = shareFolder + "\\" + topFolder.Key + "\\" + dInfo.Name;
                     string destination = dInfo.FullName;
-                    //Console.WriteLine(string.Format("{0} => {1}", linkPath, destination));
 
                     if (!Directory.Exists(topFolderPath))
                     {
