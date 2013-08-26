@@ -6,7 +6,6 @@ using System.Text;
 using System.Threading.Tasks;
 using System.IO;
 using System.Timers;
-using System.Runtime.InteropServices;
 
 namespace FileWatcher
 {
@@ -27,6 +26,7 @@ namespace FileWatcher
         private int consoleLogLevel = 3;
         private int fileLogLevel = 4;
         private List<string> foundTempDirs;
+        private object logKey = new object();
 
         /*
          * 0: Critical
@@ -34,67 +34,81 @@ namespace FileWatcher
          * 2: Warning
          * 3: Information
          * 4: Debug
-         */ 
+         */
         public void Log(int logLevel, string message)
         {
-            using (StreamWriter tw = File.AppendText(logFile))
+            string tmp = string.Format(" {0}> ", DateTime.Now.ToString("dd-MM-yyyy HH:mm:ss"));
+            lock (logKey)
             {
-                string tmp = string.Format(" {0}> ", DateTime.Now.ToString("dd-MM-yyyy HH:mm:ss"));
-                switch (logLevel)
+                try
                 {
-                    case 0:
-                        if (logLevel <= consoleLogLevel)
+                    using (StreamWriter tw = File.AppendText(logFile))
+                    {
+                        
+                        switch (logLevel)
                         {
-                            Console.WriteLine("[CRITICAL]" + tmp + message);
+                            case 0:
+                                if (logLevel <= consoleLogLevel)
+                                {
+                                    Console.WriteLine("[CRITICAL]" + tmp + message);
+                                }
+                                if (logLevel <= fileLogLevel)
+                                {
+                                    tw.WriteLine("[CRITICAL]" + tmp + message);
+                                }
+                                break;
+                            case 1:
+                                if (logLevel <= consoleLogLevel)
+                                {
+                                    Console.WriteLine("[ERROR]   " + tmp + message);
+                                }
+                                if (logLevel <= fileLogLevel)
+                                {
+                                    tw.WriteLine("[ERROR]   " + tmp + message);
+                                }
+                                break;
+                            case 2:
+                                if (logLevel <= consoleLogLevel)
+                                {
+                                    Console.WriteLine("[WARN]    " + tmp + message);
+                                }
+                                if (logLevel <= fileLogLevel)
+                                {
+                                    tw.WriteLine("[WARN]    " + tmp + message);
+                                }
+                                break;
+                            case 3:
+                                if (logLevel <= consoleLogLevel)
+                                {
+                                    Console.WriteLine("[INFO]    " + tmp + message);
+                                }
+                                if (logLevel <= fileLogLevel)
+                                {
+                                    tw.WriteLine("[INFO]    " + tmp + message);
+                                }
+                                break;
+                            case 4:
+                                if (logLevel <= consoleLogLevel)
+                                {
+                                    Console.WriteLine("[DEBUG]   " + tmp + message);
+                                }
+                                if (logLevel <= fileLogLevel)
+                                {
+                                    tw.WriteLine("[DEBUG]   " + tmp + message);
+                                }
+                                break;
+                            default:
+                                throw new Exception("Unknown log level:" + logLevel);
+                                break;
                         }
-                        if (logLevel <= fileLogLevel)
-                        {
-                            tw.WriteLine("[CRITICAL]" + tmp + message);
-                        }
-                        break;
-                    case 1:
-                        if (logLevel <= consoleLogLevel)
-                        {
-                            Console.WriteLine("[ERROR]   " + tmp + message);
-                        }
-                        if (logLevel <= fileLogLevel)
-                        {
-                            tw.WriteLine("[ERROR]   " + tmp + message);
-                        }
-                        break;
-                    case 2:
-                        if (logLevel <= consoleLogLevel)
-                        {
-                            Console.WriteLine("[WARN]    " + tmp + message);
-                        }
-                        if (logLevel <= fileLogLevel)
-                        {
-                            tw.WriteLine("[WARN]    " + tmp + message);
-                        }
-                        break;
-                    case 3:
-                        if (logLevel <= consoleLogLevel)
-                        {
-                            Console.WriteLine("[INFO]    " + tmp + message);
-                        }
-                        if (logLevel <= fileLogLevel)
-                        {
-                            tw.WriteLine("[INFO]    " + tmp + message);
-                        }
-                        break;
-                    case 4:
-                        if (logLevel <= consoleLogLevel)
-                        {
-                            Console.WriteLine("[DEBUG]   " + tmp + message);
-                        }
-                        if (logLevel <= fileLogLevel)
-                        {
-                            tw.WriteLine("[DEBUG]   " + tmp + message);
-                        }
-                        break;
-                    default:
-                        throw new Exception("Unknown log level:" + logLevel);
-                        break;
+                    }
+                }
+                catch
+                {
+                    if (logLevel <= consoleLogLevel)
+                    {
+                        Console.WriteLine("[CRITICAL]" + tmp + "Error writing to log file");
+                    }
                 }
             }
         }
@@ -146,6 +160,8 @@ namespace FileWatcher
                 if (sizeAfterItemMb > minimumFreeSpace)
                 {
                     string newPath = item.Replace(shareFolder, dirInfo.FullName);
+                    string relativePath = item.Replace(shareFolder, "");
+                    string relativeTempPath = relativePath + "_temp";
                     bool dirAlreadyExists = false;
                     string tempPath = newPath + "_temp";
                     DirectoryInfo tempDir = null;
@@ -163,15 +179,16 @@ namespace FileWatcher
                     if (!dirAlreadyExists)
                     {
                         // Check if we already have a temp path laying around
-                        if (GetExistingTempDir(tempPath) != null)
+                        if (GetExistingTempDir(relativeTempPath) != null)
                         {
-                            tempPath = GetExistingTempDir(tempPath);
+                            tempPath = GetExistingTempDir(relativeTempPath);
                         }
 
                         if (Directory.Exists(tempPath))
                         {
                             Log(2, string.Format("Temp path {0} exists", tempPath));
                             tempDir = new DirectoryInfo(tempPath);
+                            newPath = tempPath.Replace("_temp", "");
                         }
                         else
                         {
@@ -276,24 +293,27 @@ namespace FileWatcher
         {
             if (update)
             {
-                update = false;
                 Log(3, "Updating...");
                 CheckFolders();
                 UpdateShareFolder();
                 Log(3, "Done");
+                update = false;
             }
 
             timer.Interval = timerInterval;
             timer.Start();
         }
 
-        private string GetExistingTempDir(string tempPath)
+        private string GetExistingTempDir(string partOfPath)
         {
             CheckForTempDirs(topFolders);
+            Log(4, string.Format("Looking for {0} in temp dirs", partOfPath));
             foreach (string tempDir in foundTempDirs)
             {
-                if (tempDir.Contains(tempPath))
+                Log(4, string.Format("Known temp dir: {0}", tempDir));
+                if (tempDir.Contains(partOfPath))
                 {
+                    Log(4, string.Format("Found {0}", tempDir));
                     return tempDir;
                 }
             }
@@ -305,12 +325,21 @@ namespace FileWatcher
         {
             ClearFoundTempDirs();
 
-            topFolders.ToList().ForEach(r => {
-                if (r.Contains("_temp"))
+            foreach (string topFolder in topFolders)
+            {
+                string[] folders = Directory.GetDirectories(topFolder);
+                foreach (string folder in folders)
                 {
-                    foundTempDirs.Add(r);
+                    string[] subFolders = Directory.GetDirectories(folder);
+                    foreach (string subFolder in subFolders)
+                    {
+                        if (subFolder.Contains("_temp"))
+                        {
+                            foundTempDirs.Add(subFolder);
+                        }
+                    }
                 }
-            });
+            }
         }
 
         private void ClearFoundTempDirs()
@@ -482,7 +511,7 @@ namespace FileWatcher
                         Directory.CreateDirectory(topFolderPath);
                     }
 
-                    CreateSymbolicLinkDirectory(linkPath, destination);
+                    CreateDirectoryJunction(linkPath, destination);
                     if (!Directory.Exists(linkPath))
                     {
                         Log(1, string.Format("{0} was not created. This is most likely because this program was not run with administrative rights", linkPath));
@@ -584,16 +613,9 @@ namespace FileWatcher
             }
         }
 
-
-        [DllImport("kernel32.dll")]
-        private static extern bool CreateSymbolicLink(string lpSymlinkFileName, string lpTargetFileName, int dwFlags);
-        private void CreateSymbolicLinkDirectory(string linkPath, string destination)
+        private void CreateDirectoryJunction(string linkPath, string destination)
         {
-            if (!CreateSymbolicLink(linkPath, destination, 1) || Marshal.GetLastWin32Error() != 0)
-            {
-                //Console.WriteLine(Marshal.GetExceptionForHR(Marshal.GetHRForLastWin32Error()).Message);                
-                //Marshal.ThrowExceptionForHR(Marshal.GetHRForLastWin32Error());
-            }
+            JunctionPoint.Create(linkPath, destination, true);
         }
     }
 }

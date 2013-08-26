@@ -1,7 +1,7 @@
 ﻿-- To do --
-Do junction points instead of symbolic links
 
 -- Issues --
+If an existing tempdir is found, it's not checked if there's enough space on it before copying
 
 -- Possible features --
 Do more granular file system updates, instead of quering all folders everytime
