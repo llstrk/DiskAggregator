@@ -299,9 +299,10 @@ namespace FileWatcher
                 Log(3, "Done");
                 update = false;
             }
-
-            timer.Interval = timerInterval;
-            timer.Start();
+            else
+            {
+                Log(4, "timer_Elapsed(): Update is already true");
+            }
         }
 
         private string GetExistingTempDir(string partOfPath)
@@ -376,7 +377,13 @@ namespace FileWatcher
                 if (File.Exists(temppath))
                 {
                     FileInfo newFileInfo = new FileInfo(temppath);
-                    if (file.Length != newFileInfo.Length)
+                    Log(4, string.Format("Generating hash values for {0}", file.Name));
+                    string sourceHash = GetCheatMd5Hash(file.FullName);
+                    string destinationHash = GetCheatMd5Hash(newFileInfo.FullName);
+                    Log(4, string.Format("Source hash      : {0}", sourceHash));
+                    Log(4, string.Format("Destination hash : {0}", destinationHash));
+
+                    if (sourceHash != destinationHash)
                     {
                         try {
                             file.CopyTo(temppath, true);
@@ -511,7 +518,13 @@ namespace FileWatcher
                         Directory.CreateDirectory(topFolderPath);
                     }
 
-                    CreateDirectoryJunction(linkPath, destination);
+                    if (!Directory.Exists(linkPath))
+                    {
+                        Log(4, string.Format("Creating junction point for {0} => {1}", linkPath, destination));
+                        CreateDirectoryJunction(linkPath, destination);
+                        Log(4, string.Format("Junction point created for {0} => {1}", linkPath, destination));
+                    }
+
                     if (!Directory.Exists(linkPath))
                     {
                         Log(1, string.Format("{0} was not created. This is most likely because this program was not run with administrative rights", linkPath));
@@ -583,6 +596,10 @@ namespace FileWatcher
                     consoleLogLevel = 3;
                     Log(3, "Debug messages disabled");
                     break;
+                case "fsu":
+                    Log(3, "Manual FileSystemUpdate() triggered");
+                    FileSystemUpdate();
+                    break;
                 default:
                     Log(1, "Unknown command");
                     break;
@@ -616,6 +633,24 @@ namespace FileWatcher
         private void CreateDirectoryJunction(string linkPath, string destination)
         {
             JunctionPoint.Create(linkPath, destination, true);
+        }
+
+        // Will only compute hash for the last 100MB
+        private string GetCheatMd5Hash(string filePath)
+        {
+            using (var md5 = System.Security.Cryptography.MD5.Create())
+            {
+                //using (var stream = new BufferedStream(File.OpenRead(filePath), 1200000))
+                using (var stream = new BufferedStream(new FileStream(filePath, FileMode.Open), 1200000))
+                {
+                    int Offset100Meg = 104857600;
+                    if (stream.Length > Offset100Meg)
+                    {
+                        stream.Seek(-Offset100Meg, SeekOrigin.End);
+                    }
+                    return BitConverter.ToString(md5.ComputeHash(stream)).Replace("-", "").ToLower();
+                }
+            }
         }
     }
 }
