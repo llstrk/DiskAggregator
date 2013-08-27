@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Collections;
 using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
+using System.Threading;
 using System.IO;
 using System.Timers;
 
@@ -14,8 +14,8 @@ namespace FileWatcher
         private List<FileSystemWatcher> listFsw;
         private DateTime lastUpdate = DateTime.MinValue;
         private bool update = false;
-        private Timer timer;
-        private Timer moveTimer;
+        private System.Timers.Timer timer;
+        private System.Timers.Timer moveTimer;
         private Dictionary<string, List<DirectoryInfo>> dirInfo;
         private string[] topFolders;
         private string shareFolder;
@@ -27,104 +27,25 @@ namespace FileWatcher
         private int fileLogLevel = 4;
         private List<string> foundTempDirs;
         private object logKey = new object();
-
-        /*
-         * 0: Critical
-         * 1: Error
-         * 2: Warning
-         * 3: Information
-         * 4: Debug
-         */
-        public void Log(int logLevel, string message)
-        {
-            string tmp = string.Format(" {0}> ", DateTime.Now.ToString("dd-MM-yyyy HH:mm:ss"));
-            lock (logKey)
-            {
-                try
-                {
-                    using (StreamWriter tw = File.AppendText(logFile))
-                    {
-                        
-                        switch (logLevel)
-                        {
-                            case 0:
-                                if (logLevel <= consoleLogLevel)
-                                {
-                                    Console.WriteLine("[CRITICAL]" + tmp + message);
-                                }
-                                if (logLevel <= fileLogLevel)
-                                {
-                                    tw.WriteLine("[CRITICAL]" + tmp + message);
-                                }
-                                break;
-                            case 1:
-                                if (logLevel <= consoleLogLevel)
-                                {
-                                    Console.WriteLine("[ERROR]   " + tmp + message);
-                                }
-                                if (logLevel <= fileLogLevel)
-                                {
-                                    tw.WriteLine("[ERROR]   " + tmp + message);
-                                }
-                                break;
-                            case 2:
-                                if (logLevel <= consoleLogLevel)
-                                {
-                                    Console.WriteLine("[WARN]    " + tmp + message);
-                                }
-                                if (logLevel <= fileLogLevel)
-                                {
-                                    tw.WriteLine("[WARN]    " + tmp + message);
-                                }
-                                break;
-                            case 3:
-                                if (logLevel <= consoleLogLevel)
-                                {
-                                    Console.WriteLine("[INFO]    " + tmp + message);
-                                }
-                                if (logLevel <= fileLogLevel)
-                                {
-                                    tw.WriteLine("[INFO]    " + tmp + message);
-                                }
-                                break;
-                            case 4:
-                                if (logLevel <= consoleLogLevel)
-                                {
-                                    Console.WriteLine("[DEBUG]   " + tmp + message);
-                                }
-                                if (logLevel <= fileLogLevel)
-                                {
-                                    tw.WriteLine("[DEBUG]   " + tmp + message);
-                                }
-                                break;
-                            default:
-                                throw new Exception("Unknown log level:" + logLevel);
-                                break;
-                        }
-                    }
-                }
-                catch
-                {
-                    if (logLevel <= consoleLogLevel)
-                    {
-                        Console.WriteLine("[CRITICAL]" + tmp + "Error writing to log file");
-                    }
-                }
-            }
-        }
+        private Thread updaterThread;
+        private Thread moverThread;
 
         public MainProgram()
         {
             moveQueue = new Queue<string>();
             listFsw = new List<FileSystemWatcher>();
             dirInfo = new Dictionary<string, List<DirectoryInfo>>();
-            timer = new Timer();
+
+            updaterThread = new Thread(new ThreadStart(updaterThreadMethod));
+            moverThread = new Thread(new ThreadStart(moverThreadMethod));
+
+            timer = new System.Timers.Timer();
             timer.Interval = 1000;
             timer.Elapsed += timer_Elapsed;
             timer.AutoReset = false;
             timer.Start();
 
-            moveTimer = new Timer();
+            moveTimer = new System.Timers.Timer();
             moveTimer.Interval = 1000;
             moveTimer.Elapsed += moveTimer_Elapsed;
             moveTimer.AutoReset = false;
@@ -134,10 +55,10 @@ namespace FileWatcher
             shareFolder = File.ReadAllLines("ShareFolder.txt")[0];
         }
 
-        private void moveTimer_Elapsed(object sender, ElapsedEventArgs e)
+        private void moverThreadMethod()
         {
             int minimumFreeSpace = 1024;
-            
+
             AddToMoveQueue(GetNewFolders(shareFolder));
 
             string item = null;
@@ -146,7 +67,8 @@ namespace FileWatcher
                 Log(4, "Dequeing item");
                 item = moveQueue.Dequeue();
                 Log(4, string.Format("Got item {0}", item));
-            } catch { }
+            }
+            catch { }
 
             while (item != null)
             {
@@ -289,7 +211,23 @@ namespace FileWatcher
             moveTimer.Start();
         }
 
-        private void timer_Elapsed(object sender, ElapsedEventArgs e)
+        private void moveTimer_Elapsed(object sender, ElapsedEventArgs e)
+        {
+            if (moverThread.ThreadState == ThreadState.Running)
+            {
+                Log(4, "moverThread is already running");
+            }
+            else
+            {
+                Log(4, string.Format("moverThread state is {0}", moverThread.ThreadState.ToString()));
+                Log(4, "Starting moverThread");
+                moverThread = new Thread(new ThreadStart(moverThreadMethod));
+                moverThread.Start();
+            }
+        }
+
+
+        private void updaterThreadMethod()
         {
             if (update)
             {
@@ -302,6 +240,21 @@ namespace FileWatcher
             else
             {
                 Log(4, "timer_Elapsed(): Update is already true");
+            }
+        }
+
+        private void timer_Elapsed(object sender, ElapsedEventArgs e)
+        {
+            if (updaterThread.ThreadState == ThreadState.Running)
+            {
+                Log(4, "updaterThread is already running");
+            }
+            else
+            {
+                Log(4, string.Format("updaterThread state is {0}", updaterThread.ThreadState.ToString()));
+                Log(4, "Starting updaterThread");
+                updaterThread = new Thread(new ThreadStart(updaterThreadMethod));
+                updaterThread.Start();
             }
         }
 
@@ -649,6 +602,92 @@ namespace FileWatcher
                         stream.Seek(-Offset100Meg, SeekOrigin.End);
                     }
                     return BitConverter.ToString(md5.ComputeHash(stream)).Replace("-", "").ToLower();
+                }
+            }
+        }
+
+
+        /*
+         * 0: Critical
+         * 1: Error
+         * 2: Warning
+         * 3: Information
+         * 4: Debug
+         */
+        public void Log(int logLevel, string message)
+        {
+            string tmp = string.Format(" {0}> ", DateTime.Now.ToString("dd-MM-yyyy HH:mm:ss"));
+            lock (logKey)
+            {
+                try
+                {
+                    using (StreamWriter tw = File.AppendText(logFile))
+                    {
+
+                        switch (logLevel)
+                        {
+                            case 0:
+                                if (logLevel <= consoleLogLevel)
+                                {
+                                    Console.WriteLine("[CRITICAL]" + tmp + message);
+                                }
+                                if (logLevel <= fileLogLevel)
+                                {
+                                    tw.WriteLine("[CRITICAL]" + tmp + message);
+                                }
+                                break;
+                            case 1:
+                                if (logLevel <= consoleLogLevel)
+                                {
+                                    Console.WriteLine("[ERROR]   " + tmp + message);
+                                }
+                                if (logLevel <= fileLogLevel)
+                                {
+                                    tw.WriteLine("[ERROR]   " + tmp + message);
+                                }
+                                break;
+                            case 2:
+                                if (logLevel <= consoleLogLevel)
+                                {
+                                    Console.WriteLine("[WARN]    " + tmp + message);
+                                }
+                                if (logLevel <= fileLogLevel)
+                                {
+                                    tw.WriteLine("[WARN]    " + tmp + message);
+                                }
+                                break;
+                            case 3:
+                                if (logLevel <= consoleLogLevel)
+                                {
+                                    Console.WriteLine("[INFO]    " + tmp + message);
+                                }
+                                if (logLevel <= fileLogLevel)
+                                {
+                                    tw.WriteLine("[INFO]    " + tmp + message);
+                                }
+                                break;
+                            case 4:
+                                if (logLevel <= consoleLogLevel)
+                                {
+                                    Console.WriteLine("[DEBUG]   " + tmp + message);
+                                }
+                                if (logLevel <= fileLogLevel)
+                                {
+                                    tw.WriteLine("[DEBUG]   " + tmp + message);
+                                }
+                                break;
+                            default:
+                                throw new Exception("Unknown log level:" + logLevel);
+                                break;
+                        }
+                    }
+                }
+                catch
+                {
+                    if (logLevel <= consoleLogLevel)
+                    {
+                        Console.WriteLine("[CRITICAL]" + tmp + "Error writing to log file");
+                    }
                 }
             }
         }
