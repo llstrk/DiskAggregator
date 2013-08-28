@@ -40,13 +40,14 @@ namespace FileWatcher
             moverThread = new Thread(new ThreadStart(moverThreadLogic));
 
             timer = new System.Timers.Timer();
-            timer.Interval = 1000;
+            timer.Interval = 1000; // Immediately check folder structure
             timer.Elapsed += timer_Elapsed;
             timer.AutoReset = false;
+            update = true;
             timer.Start();
 
             moveTimer = new System.Timers.Timer();
-            moveTimer.Interval = 1000;
+            moveTimer.Interval = 10000; // Wait a little before starting moves
             moveTimer.Elapsed += moveTimer_Elapsed;
             moveTimer.AutoReset = false;
             moveTimer.Start();
@@ -170,8 +171,7 @@ namespace FileWatcher
                         {
                             if (copyOk)
                             {
-                                Log(4, string.Format("Deleting source: Deleting {0}", item + "_delete"));
-                                Directory.Delete(item + "_delete", true);
+                                DeleteFolder(item + "_delete", true);
                             }
                         }
                         catch (Exception ex)
@@ -211,6 +211,65 @@ namespace FileWatcher
             moveTimer.Start();
         }
 
+        private void DeleteFolder(string path)
+        {
+            DeleteFolder(path, false);
+        }
+
+        private void RecursiveRemoveReadOnly(string path)
+        {
+            foreach (string file in Directory.GetFiles(path))
+            {
+                FileInfo fileInfo = new FileInfo(file);
+                if ((fileInfo.Attributes & FileAttributes.ReadOnly) == FileAttributes.ReadOnly)
+                {
+                    try
+                    {
+                        fileInfo.Attributes -= FileAttributes.ReadOnly;
+                        Log(4, string.Format("RecursiveRemoveReadOnly(): Removed ReadOnly from {0}", file));
+                    }
+                    catch (Exception ex)
+                    {
+                        Log(1, string.Format("RecursiveRemoveReadOnly(): {0}", ex.Message));
+                    }
+                }
+            }
+
+            foreach (string folder in Directory.GetDirectories(path))
+            {
+                RecursiveRemoveReadOnly(folder);
+            }
+        }
+
+        private void DeleteFolder(string path, bool force)
+        {
+            Log(4, string.Format("DeleteFolder(): Deleting folder: {0}", path));
+
+            int retryAmount = 10;
+            for (int i = 0; i < retryAmount; i++) // Hack to prevent most errors when deleting
+            {
+                try
+                {
+                    if (force)
+                    {
+                        RecursiveRemoveReadOnly(path);
+                    }
+                    Directory.Delete(path, true);
+                    Log(4, string.Format("DeleteFolder(): {0} deleted", path));
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    Log(4, string.Format("DeleteFolder(): {0}", ex.Message));
+                    if (i == retryAmount)
+                    {
+                        throw ex;
+                    }
+                    Thread.Sleep(1000);
+                }
+            }
+        }
+
         private void moveTimer_Elapsed(object sender, ElapsedEventArgs e)
         {
             if (moverThread.ThreadState == ThreadState.Running)
@@ -234,6 +293,7 @@ namespace FileWatcher
                 Log(3, "Updating...");
                 CheckFolders();
                 UpdateShareFolder();
+                RemoveOldFolders(shareFolder);
                 Log(3, "Done");
                 update = false;
             }
@@ -451,6 +511,29 @@ namespace FileWatcher
                             AddFolder(topFolder.Name, folder);
                         }
                         
+                    }
+                }
+            }
+        }
+
+        private void RemoveOldFolders(string path)
+        {
+            foreach (string folder in Directory.GetDirectories(path))
+            {
+                foreach (string subFolder in Directory.GetDirectories(folder))
+                {
+                    DirectoryInfo dirInfo = new DirectoryInfo(subFolder);
+                    if (dirInfo.FullName.EndsWith("_delete"))
+                    {
+                        Log(2, string.Format("Trying to delete old folder {0}", dirInfo.FullName));
+                        try
+                        {
+                            DeleteFolder(dirInfo.FullName, true);
+                        }
+                        catch (Exception ex)
+                        {
+                            Log(1, ex.Message);
+                        }
                     }
                 }
             }
