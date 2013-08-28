@@ -36,8 +36,8 @@ namespace FileWatcher
             listFsw = new List<FileSystemWatcher>();
             dirInfo = new Dictionary<string, List<DirectoryInfo>>();
 
-            updaterThread = new Thread(new ThreadStart(updaterThreadMethod));
-            moverThread = new Thread(new ThreadStart(moverThreadMethod));
+            updaterThread = new Thread(new ThreadStart(updaterThreadLogic));
+            moverThread = new Thread(new ThreadStart(moverThreadLogic));
 
             timer = new System.Timers.Timer();
             timer.Interval = 1000;
@@ -55,7 +55,7 @@ namespace FileWatcher
             shareFolder = File.ReadAllLines("ShareFolder.txt")[0];
         }
 
-        private void moverThreadMethod()
+        private void moverThreadLogic()
         {
             int minimumFreeSpace = 1024;
 
@@ -221,13 +221,13 @@ namespace FileWatcher
             {
                 Log(4, string.Format("moverThread state is {0}", moverThread.ThreadState.ToString()));
                 Log(4, "Starting moverThread");
-                moverThread = new Thread(new ThreadStart(moverThreadMethod));
+                moverThread = new Thread(new ThreadStart(moverThreadLogic));
                 moverThread.Start();
             }
         }
 
 
-        private void updaterThreadMethod()
+        private void updaterThreadLogic()
         {
             if (update)
             {
@@ -253,7 +253,7 @@ namespace FileWatcher
             {
                 Log(4, string.Format("updaterThread state is {0}", updaterThread.ThreadState.ToString()));
                 Log(4, "Starting updaterThread");
-                updaterThread = new Thread(new ThreadStart(updaterThreadMethod));
+                updaterThread = new Thread(new ThreadStart(updaterThreadLogic));
                 updaterThread.Start();
             }
         }
@@ -511,7 +511,10 @@ namespace FileWatcher
                     DirectoryInfo dInfo = new DirectoryInfo(folder);
                     if ((dInfo.Attributes & FileAttributes.ReparsePoint) == 0) // Not reparse point
                     {
-                        result.Add(dInfo.FullName);
+                        if (!dInfo.Name.Contains("_delete"))
+                        {
+                            result.Add(dInfo.FullName);
+                        }
                     }
                 }
             }
