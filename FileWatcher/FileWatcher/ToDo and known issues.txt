@@ -1,4 +1,6 @@
 ﻿-- To do --
+Check for and remove broken links
+
 
 -- Issues --
 If an existing tempdir is found, it's not checked if there's enough space on it before copying
