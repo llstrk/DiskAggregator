@@ -211,6 +211,45 @@ namespace FileWatcher
             moveTimer.Start();
         }
 
+        private void CheckForBadLinks(string path, bool removeBadLinks)
+        {
+            foreach (string topFolder in Directory.GetDirectories(path))
+            {
+                foreach (string folder in Directory.GetDirectories(topFolder))
+                {
+                    if (JunctionPoint.Exists(folder))
+                    {
+                        string targetPath = JunctionPoint.GetTarget(folder);
+                        if (!Directory.Exists(targetPath))
+                        {
+                            Log(2, string.Format("CheckForBadLinks(): Bad link: {0} => {1}", folder, targetPath));
+                            if (removeBadLinks)
+                            {
+                                DeleteLink(folder);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        Log(2, string.Format("CheckForBadLinks(): {0} doesn't exist, or is not a junction point", folder));
+                    }
+                }
+            }
+        }
+
+        private void DeleteLink(string path)
+        {
+            if (JunctionPoint.Exists(path))
+            {
+                Log(4, string.Format("DeleteLink(): Deleting link {0}", path));
+                JunctionPoint.Delete(path);
+            }
+            else
+            {
+                Log(2, string.Format("DeleteLink(): {0} doesn't exist, or is not a junction point", path));
+            }
+        }
+
         private void DeleteFolder(string path)
         {
             DeleteFolder(path, false);
@@ -294,6 +333,7 @@ namespace FileWatcher
                 CheckFolders();
                 UpdateShareFolder();
                 RemoveOldFolders(shareFolder);
+                CheckForBadLinks(shareFolder, true);
                 Log(3, "Done");
                 update = false;
             }
@@ -556,14 +596,21 @@ namespace FileWatcher
 
                     if (!Directory.Exists(linkPath))
                     {
-                        Log(4, string.Format("Creating junction point for {0} => {1}", linkPath, destination));
-                        CreateDirectoryJunction(linkPath, destination);
-                        Log(4, string.Format("Junction point created for {0} => {1}", linkPath, destination));
+                        if (Directory.Exists(destination))
+                        {
+                            Log(4, string.Format("UpdateShareFolder(): Creating junction point for {0} => {1}", linkPath, destination));
+                            CreateDirectoryJunction(linkPath, destination);
+                            Log(4, string.Format("UpdateShareFolder(): Junction point created for {0} => {1}", linkPath, destination));
+                        }
+                        else
+                        {
+                            Log(1, string.Format("UpdateShareFolder(): Link destination not found: {0}", destination));
+                        }
                     }
 
                     if (!Directory.Exists(linkPath))
                     {
-                        Log(1, string.Format("{0} was not created. This is most likely because this program was not run with administrative rights", linkPath));
+                        Log(1, string.Format("UpdateShareFolder(): {0} was not created. This is most likely because this program was not run with administrative rights", linkPath));
                     }
                 }
             }
