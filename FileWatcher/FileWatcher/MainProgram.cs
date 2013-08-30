@@ -430,11 +430,32 @@ namespace FileWatcher
                 if (File.Exists(temppath))
                 {
                     FileInfo newFileInfo = new FileInfo(temppath);
-                    Log(4, string.Format("Generating hash values for {0}", file.Name));
-                    string sourceHash = GetCheatMd5Hash(file.FullName);
-                    string destinationHash = GetCheatMd5Hash(newFileInfo.FullName);
-                    Log(4, string.Format("Source hash      : {0}", sourceHash));
-                    Log(4, string.Format("Destination hash : {0}", destinationHash));
+                    Log(4, string.Format("DirectoryCopy(): Generating hash values for {0}", file.Name));
+
+                    string sourceHash = "";
+                    string destinationHash = "";
+
+                    try
+                    {
+                        sourceHash = GetCheatMd5Hash(file.FullName);
+                    }
+                    catch (Exception ex)
+                    {
+                        Log(1, string.Format("DirectoryCopy(): Unable to generate hash for {0}, skipping file. {1}", file.FullName, ex.Message));
+                        break;
+                    }
+                    try
+                    {
+                        destinationHash = GetCheatMd5Hash(newFileInfo.FullName);
+                    }
+                    catch (Exception ex)
+                    {
+                        Log(1, string.Format("DirectoryCopy(): Unable to generate hash for {0}, skipping file. {1}", newFileInfo.FullName, ex.Message));
+                        break;
+                    }
+
+                    Log(4, string.Format("DirectoryCopy(): Source hash      : {0}", sourceHash));
+                    Log(4, string.Format("DirectoryCopy(): Destination hash : {0}", destinationHash));
 
                     if (sourceHash != destinationHash)
                     {
@@ -445,7 +466,7 @@ namespace FileWatcher
                         {
                             if (ex.HResult == -2147024864)
                             {
-                                Log(2, string.Format("File {0} is in use, skipping", file.Name));
+                                Log(2, string.Format("DirectoryCopy(): File {0} is in use, skipping", file.Name));
                             }
                         }
                     }
@@ -460,7 +481,7 @@ namespace FileWatcher
                     {
                         if (ex.HResult == -2147024864)
                         {
-                            Log(2, string.Format("File {0} is in use, skipping", file.Name));
+                            Log(2, string.Format("DirectoryCopy(): File {0} is in use, skipping", file.Name));
                         }
                     }
                 }
@@ -727,7 +748,7 @@ namespace FileWatcher
             using (var md5 = System.Security.Cryptography.MD5.Create())
             {
                 //using (var stream = new BufferedStream(File.OpenRead(filePath), 1200000))
-                using (var stream = new BufferedStream(new FileStream(filePath, FileMode.Open), 1200000))
+                using (var stream = new BufferedStream(new FileStream(filePath, FileMode.Open, FileAccess.Read), 1200000))
                 {
                     int Offset100Meg = 104857600;
                     if (stream.Length > Offset100Meg)
