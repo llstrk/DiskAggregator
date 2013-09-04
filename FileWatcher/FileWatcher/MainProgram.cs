@@ -231,7 +231,14 @@ namespace FileWatcher
                     }
                     else
                     {
-                        Log(2, string.Format("CheckForBadLinks(): {0} doesn't exist, or is not a junction point", folder));
+                        if (!Directory.Exists(folder))
+                        {
+                            Log(2, string.Format("CheckForBadLinks(): {0} doesn't exist", folder));
+                        }
+                        else
+                        {
+                            Log(4, string.Format("CheckForBadLinks(): {0} is not a junction point", folder));
+                        }
                     }
                 }
             }
