@@ -1,7 +1,7 @@
 ﻿-- To do --
 
 -- Issues --
-If an existing tempdir is found, it's not checked if there's enough space on it before copying
+If an existing tempdir is found, it's not checked if there's enough space on the drive before copying
 Sometimes it seems like the update or move threads dissapear with no exceptions. Moved them to their own threads, instead of the timer, for easier troubleshooting
 Doesn't check if folder already exists on another drive
 Make a file system watcher for the share folder, so that the move timer only starts when there's new content

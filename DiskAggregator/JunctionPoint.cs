@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.Win32.SafeHandles;
 
-namespace FileWatcher
+namespace DiskAggregator
 {
 
     // Credits goes to Jeff Brown http://www.codeproject.com/Articles/15633/Manipulating-NTFS-Junction-Points-in-NET

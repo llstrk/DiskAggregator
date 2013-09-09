@@ -7,7 +7,7 @@ using System.Threading;
 using System.IO;
 using System.Timers;
 
-namespace FileWatcher
+namespace DiskAggregator
 {
     public class MainProgram
     {

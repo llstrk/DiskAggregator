@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Express 2012 for Windows Desktop
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FileWatcher", "FileWatcher\FileWatcher.csproj", "{6C0DC3EE-9948-4B87-B868-8CEEE4F58D37}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DiskAggregator", "DiskAggregator\DiskAggregator.csproj", "{6C0DC3EE-9948-4B87-B868-8CEEE4F58D37}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
