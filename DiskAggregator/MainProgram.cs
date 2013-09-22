@@ -119,10 +119,11 @@ namespace DiskAggregator
                             tempDir.Attributes = FileAttributes.Hidden;
                             Log(4, string.Format("Created {0} and changed it to hidden", tempDir.FullName));
                         }
-
-                        Log(4, string.Format("Copying {0} to {1}", item, tempPath));
-                        DirectoryCopy(item, tempPath, true);
                     }
+
+                    Log(4, string.Format("Copying {0} to {1}", item, tempPath));
+                    DirectoryCopy(item, tempPath, true);
+
                     long sourceSize = GetDirectorySize(item);
                     long destSize = GetDirectorySize(tempPath);
 
